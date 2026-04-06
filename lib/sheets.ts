@@ -5,13 +5,21 @@ const BOOKINGS_SHEET = "Bookings";
 const DUPLICATES_SHEET = "DuplicateAttempts";
 
 function getAuth() {
+  let privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
+  // Strip surrounding quotes if accidentally pasted with them (common Vercel mistake)
+  if ((privateKey.startsWith('"') && privateKey.endsWith('"')) ||
+      (privateKey.startsWith("'") && privateKey.endsWith("'"))) {
+    privateKey = privateKey.slice(1, -1);
+  }
+  // Replace literal \n sequences with actual newlines
+  privateKey = privateKey.replace(/\\n/g, "\n");
+  // Ensure -----END marker is on its own line (handles copy-paste without trailing newline)
+  privateKey = privateKey.replace(/([^\n])(-----END )/, "$1\n$2");
+
   return new google.auth.GoogleAuth({
     credentials: {
-      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key: process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(
-        /\\n/g,
-        "\n"
-      ),
+      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim(),
+      private_key: privateKey,
     },
     scopes: ["https://www.googleapis.com/auth/spreadsheets"],
   });

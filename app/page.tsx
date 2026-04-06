@@ -330,7 +330,11 @@ function BookingForm() {
     if (!form.branch || !form.appointmentDate) { setCapState(null); return; }
     setCapLoading(true);
     fetch(`/api/capacity?branch=${encodeURIComponent(form.branch)}&date=${form.appointmentDate}`)
-      .then(r=>r.json()).then(d=>{ setCapState(d); setCapLoading(false); })
+      .then(r=>r.json()).then(d=>{
+        if (d.error || d.available === undefined) { setCapState(null); }
+        else { setCapState(d); }
+        setCapLoading(false);
+      })
       .catch(()=>{ setCapState(null); setCapLoading(false); });
   }, [form.branch, form.appointmentDate]);
 
