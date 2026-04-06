@@ -352,12 +352,22 @@ function BookingForm() {
         body: JSON.stringify({ ...form, salesRep }),
       });
       const data = await res.json();
-      setResult(res.status === 503
-        ? { success:false, message:"⚙️ Google Sheets لم يتم ربطه بعد." }
-        : data
-      );
+      if (res.status === 503) {
+        setResult({ success:false, type:"config", message:"⚙️ Google Sheets لم يتم ربطه بعد." });
+      } else if (!res.ok) {
+        const isCapacityError = res.status === 409 && !data?.isDuplicate && /full|ممتلئ/i.test(data?.message || "");
+        setResult({
+          success:false,
+          isDuplicate: Boolean(data?.isDuplicate),
+          type: isCapacityError ? "capacity" : "error",
+          message: data?.message || data?.error || "حصل خطأ أثناء الحجز",
+          alternatives: data?.alternatives || [],
+        });
+      } else {
+        setResult(data);
+      }
     } catch(e:any) {
-      setResult({ success:false, message:"Network error: "+e.message });
+      setResult({ success:false, type:"error", message:"Network error: "+e.message });
     }
     setSubmitting(false);
   };
@@ -374,6 +384,7 @@ function BookingForm() {
   if (result) {
     const ok  = result.success;
     const dup = result.isDuplicate;
+    const cap = result.type === "capacity";
     return (
       <div style={{ height:"100%", display:"flex", alignItems:"center", justifyContent:"center", padding:16 }}>
         <div className="fade-up" style={{
@@ -383,7 +394,7 @@ function BookingForm() {
         }}>
           <p style={{ fontSize:16, fontWeight:700, marginBottom:8,
             color: ok ? T.success : "#fca5a5" }}>
-            {ok ? "✅ تم الحجز بنجاح" : dup ? "⚠️ حجز مكرر" : "⛔ الفرع ممتلئ"}
+            {ok ? "✅ تم الحجز بنجاح" : dup ? "⚠️ حجز مكرر" : cap ? "⛔ الفرع ممتلئ" : "⚠️ حصل خطأ"}
           </p>
           <p style={{ color:T.text2, fontSize:13, lineHeight:1.65 }}>{result.message}</p>
 

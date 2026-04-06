@@ -3,6 +3,11 @@ import { google } from "googleapis";
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
 const BOOKINGS_SHEET = "Bookings";
 const DUPLICATES_SHEET = "DuplicateAttempts";
+const DEFAULT_BRANCH_CAPACITY: Record<string, number> = {
+  التجمع: 10,
+  زايد: 8,
+  المعادي: 6,
+};
 
 function getAuth() {
   let privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
@@ -29,11 +34,21 @@ function getSheets() {
   return google.sheets({ version: "v4", auth: getAuth() });
 }
 
-function getBranchCapacity(): Record<string, number> {
+export function getBranchCapacity(): Record<string, number> {
   try {
-    return JSON.parse(process.env.BRANCH_CAPACITY || "{}");
+    const raw = JSON.parse(process.env.BRANCH_CAPACITY || "{}") as Record<string, unknown>;
+    const sanitized: Record<string, number> = { ...DEFAULT_BRANCH_CAPACITY };
+
+    for (const [branch, value] of Object.entries(raw)) {
+      const n = typeof value === "number" ? value : Number(value);
+      if (Number.isFinite(n) && n > 0) {
+        sanitized[branch] = n;
+      }
+    }
+
+    return sanitized;
   } catch {
-    return { التجمع: 8, زايد: 5, المعادي: 4 };
+    return { ...DEFAULT_BRANCH_CAPACITY };
   }
 }
 
@@ -43,6 +58,22 @@ function formatDate(date: Date): string {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+/** Normalize for duplicate detection only; storage in the sheet stays as entered. */
+function normalizeMobileForDuplicateKey(mobile: string): string {
+  let d = mobile.replace(/\D/g, "");
+  if (d.startsWith("20") && d.length === 12) {
+    d = d.slice(2);
+  }
+  if (d.length === 11 && d.startsWith("0")) {
+    d = d.slice(1);
+  }
+  return d;
+}
+
+function isCancelledStatus(status: string): boolean {
+  return (status || "").toUpperCase().includes("CANCEL");
 }
 
 // Check if a phone number already has any active future booking
@@ -57,15 +88,15 @@ export async function checkDuplicatePhone(
   });
 
   const rows = res.data.values || [];
-  const normalizedMobile = mobile.trim();
+  const normalizedMobile = normalizeMobileForDuplicateKey(mobile.trim());
   const today = formatDate(new Date());
 
   for (const row of rows) {
-    const rowMobile = (row[3] || "").trim();
+    const rowMobile = normalizeMobileForDuplicateKey((row[3] || "").trim());
     const rowDate = row[8] || "";
-    const rowStatus = (row[10] || "").toUpperCase();
+    const rowStatus = row[10] || "";
 
-    if (rowStatus.includes("CANCEL")) continue;
+    if (isCancelledStatus(rowStatus)) continue;
 
     let normalizedRowDate = rowDate;
     try { normalizedRowDate = formatDate(new Date(rowDate)); } catch {}
@@ -166,7 +197,7 @@ export async function getBookingCount(
     const rowDate = row[8] || "";
     const rowStatus = row[10] || "";
 
-    if (rowStatus.includes("CANCELLED")) continue;
+    if (isCancelledStatus(rowStatus)) continue;
 
     // Normalize date comparison
     let normalizedRowDate = rowDate;
@@ -185,7 +216,7 @@ export async function getBookingCount(
 // Check capacity for a branch on a date
 export async function checkCapacity(branch: string, date: string) {
   const capacity = getBranchCapacity();
-  const branchCap = capacity[branch] || 999;
+  const branchCap = capacity[branch] ?? DEFAULT_BRANCH_CAPACITY[branch] ?? 10;
   const booked = await getBookingCount(branch, date);
 
   return {
@@ -215,7 +246,7 @@ export async function checkAllBranchCapacity(date: string, branches: string[]) {
     const rowBranch = row[4] || "";
     const rowDate = row[8] || "";
     const rowStatus = row[10] || "";
-    if (rowStatus.includes("CANCELLED")) continue;
+    if (isCancelledStatus(rowStatus)) continue;
     if (!(rowBranch in counts)) continue;
 
     let normalizedRowDate = rowDate;
@@ -225,11 +256,52 @@ export async function checkAllBranchCapacity(date: string, branches: string[]) {
 
   const result: Record<string, any> = {};
   for (const b of branches) {
-    const cap = capacity[b] || 999;
+    const cap = capacity[b] ?? DEFAULT_BRANCH_CAPACITY[b] ?? 10;
     const booked = counts[b];
     result[b] = { branch: b, date, booked, capacity: cap, available: cap - booked, full: booked >= cap };
   }
   return result;
+}
+
+function parseAppendRowNumber(updatedRange: string | null | undefined): number | null {
+  if (!updatedRange) return null;
+  const m = updatedRange.match(/![A-Za-z]+(\d+)/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+async function getBookingsSheetId(sheets: ReturnType<typeof getSheets>): Promise<number> {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+  const sheet = meta.data.sheets?.find((s) => s.properties?.title === BOOKINGS_SHEET);
+  const id = sheet?.properties?.sheetId;
+  if (id === undefined || id === null) {
+    throw new Error(`Sheet "${BOOKINGS_SHEET}" not found`);
+  }
+  return id;
+}
+
+/** Count rows for branch+date where status does not indicate cancelled. */
+function countBranchDateNonCancelled(
+  rows: string[][],
+  branch: string,
+  date: string
+): number {
+  let count = 0;
+  for (const row of rows) {
+    const rowBranch = row[4] || "";
+    const rowDate = row[8] || "";
+    const rowStatus = row[10] || "";
+    if (isCancelledStatus(rowStatus)) continue;
+
+    let normalizedRowDate = rowDate;
+    try {
+      normalizedRowDate = formatDate(new Date(rowDate));
+    } catch {}
+
+    if (rowBranch === branch && normalizedRowDate === date) {
+      count++;
+    }
+  }
+  return count;
 }
 
 // Add a booking row
@@ -244,7 +316,7 @@ export async function addBooking(data: {
   appointmentDate: string;
   notes: string;
 }) {
-  // Double-check capacity before writing
+  // UI-facing early return (kept for fast alternatives path)
   const cap = await checkCapacity(data.branch, data.appointmentDate);
   if (cap.full) {
     return { success: false, message: "Branch is full", capacity: cap };
@@ -252,9 +324,9 @@ export async function addBooking(data: {
 
   const sheets = getSheets();
   const timestamp = new Date().toISOString();
-  const status = `✅ Confirmed (${cap.booked + 1}/${cap.capacity})`;
+  const pendingStatus = "⏳ PENDING";
 
-  await sheets.spreadsheets.values.append({
+  const appendRes = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${BOOKINGS_SHEET}!A:K`,
     valueInputOption: "USER_ENTERED",
@@ -271,17 +343,73 @@ export async function addBooking(data: {
           data.amount,
           data.appointmentDate,
           data.notes,
-          status,
+          pendingStatus,
         ],
       ],
     },
   });
 
-  return {
-    success: true,
-    message: `Booking confirmed (${cap.booked + 1}/${cap.capacity})`,
-    capacity: { ...cap, booked: cap.booked + 1, available: cap.available - 1 },
-  };
+  const rowNumber = parseAppendRowNumber(appendRes.data.updates?.updatedRange ?? null);
+  if (rowNumber === null) {
+    throw new Error("Append did not return updatedRange; cannot finalize booking");
+  }
+
+  const fresh = await sheets.spreadsheets.values.get({
+    spreadsheetId: SPREADSHEET_ID,
+    range: `${BOOKINGS_SHEET}!A2:K`,
+  });
+  const rows = fresh.data.values || [];
+
+  const capacityMap = getBranchCapacity();
+  const branchCap = capacityMap[data.branch] ?? DEFAULT_BRANCH_CAPACITY[data.branch] ?? 10;
+
+  const totalForSlot = countBranchDateNonCancelled(rows, data.branch, data.appointmentDate);
+
+  if (totalForSlot <= branchCap) {
+    const status = `✅ Confirmed (${totalForSlot}/${branchCap})`;
+    await sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${BOOKINGS_SHEET}!K${rowNumber}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [[status]] },
+    });
+
+    return {
+      success: true,
+      message: `Booking confirmed (${totalForSlot}/${branchCap})`,
+      capacity: {
+        branch: data.branch,
+        date: data.appointmentDate,
+        booked: totalForSlot,
+        capacity: branchCap,
+        available: branchCap - totalForSlot,
+        full: false,
+      },
+    };
+  }
+
+  const sheetId = await getBookingsSheetId(sheets);
+  const startIndex = rowNumber - 1;
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [
+        {
+          deleteDimension: {
+            range: {
+              sheetId,
+              dimension: "ROWS",
+              startIndex,
+              endIndex: startIndex + 1,
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  const capAfterRollback = await checkCapacity(data.branch, data.appointmentDate);
+  return { success: false, message: "Branch is full", capacity: capAfterRollback };
 }
 
 // Find next available dates for a branch
@@ -291,7 +419,7 @@ export async function findAvailableDates(
   count: number = 5
 ): Promise<Array<{ date: string; available: number }>> {
   const capacity = getBranchCapacity();
-  const branchCap = capacity[branch] || 999;
+  const branchCap = capacity[branch] ?? DEFAULT_BRANCH_CAPACITY[branch] ?? 10;
   const results: Array<{ date: string; available: number }> = [];
 
   const checkDate = new Date(fromDate);

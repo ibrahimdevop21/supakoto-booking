@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { checkAllBranchCapacity } from "@/lib/sheets";
+import { checkAllBranchCapacity, getBranchCapacity } from "@/lib/sheets";
 
 export async function GET(req: NextRequest) {
   const session = await getServerSession(authOptions);
@@ -22,10 +22,7 @@ export async function GET(req: NextRequest) {
     !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL.startsWith("placeholder");
 
   if (!isConfigured) {
-    const capacityMap: Record<string, number> = (() => {
-      try { return JSON.parse(process.env.BRANCH_CAPACITY || "{}"); }
-      catch { return { التجمع: 10, زايد: 8, المعادي: 6 }; }
-    })();
+    const capacityMap = getBranchCapacity();
     const result: Record<string, any> = {};
     for (const b of branches) {
       const cap = capacityMap[b] ?? 0;

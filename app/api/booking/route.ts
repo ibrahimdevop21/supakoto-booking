@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import { addBooking, findAvailableDates, checkDuplicatePhone, logDuplicateAttempt } from "@/lib/sheets";
+import {
+  addBooking,
+  findAvailableDates,
+  checkDuplicatePhone,
+  logDuplicateAttempt,
+  checkCapacity,
+} from "@/lib/sheets";
 
 export async function POST(req: NextRequest) {
   // Auth check
@@ -69,6 +75,25 @@ export async function POST(req: NextRequest) {
           success: false,
           isDuplicate: true,
           message: `هذا العميل (${body.mobile}) عنده حجز بالفعل بتاريخ ${dup.existingDate} — مسجل على ${dup.existingRep}${dup.existingBranch ? " · " + dup.existingBranch : ""}`,
+        },
+        { status: 409 }
+      );
+    }
+
+    // Fast capacity pre-check (same as first step inside addBooking)
+    const preCap = await checkCapacity(body.branch.trim(), body.appointmentDate.trim());
+    if (preCap.full) {
+      const alternatives = await findAvailableDates(
+        body.branch.trim(),
+        body.appointmentDate.trim(),
+        5
+      );
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Branch is full",
+          capacity: preCap,
+          alternatives,
         },
         { status: 409 }
       );

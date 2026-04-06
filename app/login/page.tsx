@@ -12,7 +12,7 @@ const SALES_REPS = [
 
 function LoginContent() {
   const params = useSearchParams();
-  const error = params.get("error");
+  const error = params?.get("error");
 
   const [name, setName]           = useState("");
   const [pin, setPin]             = useState("");
