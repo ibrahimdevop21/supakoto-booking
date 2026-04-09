@@ -570,7 +570,9 @@ function BookingForm() {
                 {isFull ? (
                   <div style={{ padding:"11px 16px", background:T.errBg, border:`1px solid ${T.errBd}`,
                     borderRadius:9, color:"#fca5a5", fontSize:12.5, fontWeight:600, textAlign:"center" }}>
-                    🔴 الفرع ممتلئ — غيّر التاريخ أو الفرع
+                    {capState?.freezeBlocked
+                      ? `⚠️ ${capState?.freezeMessage || "هذا الفرع لا يستقبل حجوزات جديدة حاليا."}`
+                      : "🔴 الفرع ممتلئ — غيّر التاريخ أو الفرع"}
                   </div>
                 ) : (
                   <button onClick={handleSubmit} style={{
@@ -609,19 +611,27 @@ function BookingForm() {
 // ─── Capacity badge ───────────────────────────────────────────────────────────
 function CapBadge({ cap }: { cap: any }) {
   const full  = cap.full;
+  const freezeBlocked = cap.freezeBlocked === true;
   const low   = !full && cap.available <= 2;
   return (
-    <span style={{
-      display:"inline-flex", alignItems:"center", gap:4,
-      padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:600,
-      background: full ? T.errBg  : low ? T.warnBg  : T.successBg,
-      border:     `1px solid ${full ? T.errBd : low ? T.warnBd : T.successBd}`,
-      color:      full ? "#fca5a5" : low ? T.warn   : T.success,
-    }}>
-      {full  ? `🔴 ممتلئ ${cap.booked}/${cap.capacity}`
-             : low ? `🟡 متبقي ${cap.available} (${cap.booked}/${cap.capacity})`
-                   : `🟢 متاح ${cap.available} (${cap.booked}/${cap.capacity})`}
-    </span>
+    <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
+      <span style={{
+        display:"inline-flex", alignItems:"center", gap:4, width:"fit-content",
+        padding:"3px 10px", borderRadius:20, fontSize:11, fontWeight:600,
+        background: full ? T.errBg  : low ? T.warnBg  : T.successBg,
+        border:     `1px solid ${full ? T.errBd : low ? T.warnBd : T.successBd}`,
+        color:      full ? "#fca5a5" : low ? T.warn   : T.success,
+      }}>
+        {full  ? `🔴 ممتلئ ${cap.booked}/${cap.capacity}`
+               : low ? `🟡 متبقي ${cap.available} (${cap.booked}/${cap.capacity})`
+                     : `🟢 متاح ${cap.available} (${cap.booked}/${cap.capacity})`}
+      </span>
+      {freezeBlocked && (
+        <span style={{ fontSize:11, color:"#fca5a5", lineHeight:1.5 }}>
+          ⚠️ {cap.freezeMessage || "هذا الفرع لا يستقبل حجوزات جديدة خلال الفترة الحالية."}
+        </span>
+      )}
+    </div>
   );
 }
 

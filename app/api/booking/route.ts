@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: "Branch is full",
+          message: preCap.freezeMessage || "Branch is full",
           capacity: preCap,
           alternatives,
         },
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          message: result.message,
+          message: (result.capacity as any)?.freezeMessage || result.message,
           capacity: result.capacity,
           alternatives,
         },

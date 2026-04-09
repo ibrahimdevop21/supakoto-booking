@@ -8,6 +8,13 @@ const DEFAULT_BRANCH_CAPACITY: Record<string, number> = {
   زايد: 8,
   المعادي: 6,
 };
+const FREEZE_START_DATE = "2026-04-09";
+const FREEZE_END_DATE = "2026-04-14"; // inclusive
+const POST_FREEZE_BRANCH_CAPACITY: Record<string, number> = {
+  التجمع: 8,
+  زايد: 6,
+  المعادي: 3,
+};
 
 function getAuth() {
   let privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
@@ -74,6 +81,18 @@ function normalizeMobileForDuplicateKey(mobile: string): string {
 
 function isCancelledStatus(status: string): boolean {
   return (status || "").toUpperCase().includes("CANCEL");
+}
+
+function isInBookingFreezeWindow(date: string): boolean {
+  return date >= FREEZE_START_DATE && date <= FREEZE_END_DATE;
+}
+
+function getBranchCapacityForDate(branch: string, date: string): number {
+  const capacity = getBranchCapacity();
+  if (date > FREEZE_END_DATE && POST_FREEZE_BRANCH_CAPACITY[branch] !== undefined) {
+    return POST_FREEZE_BRANCH_CAPACITY[branch];
+  }
+  return capacity[branch] ?? DEFAULT_BRANCH_CAPACITY[branch] ?? 10;
 }
 
 // Check if a phone number already has any active future booking
@@ -215,9 +234,9 @@ export async function getBookingCount(
 
 // Check capacity for a branch on a date
 export async function checkCapacity(branch: string, date: string) {
-  const capacity = getBranchCapacity();
-  const branchCap = capacity[branch] ?? DEFAULT_BRANCH_CAPACITY[branch] ?? 10;
+  const branchCap = getBranchCapacityForDate(branch, date);
   const booked = await getBookingCount(branch, date);
+  const freezeBlocked = isInBookingFreezeWindow(date);
 
   return {
     branch,
@@ -225,13 +244,16 @@ export async function checkCapacity(branch: string, date: string) {
     booked,
     capacity: branchCap,
     available: branchCap - booked,
-    full: booked >= branchCap,
+    full: freezeBlocked || booked >= branchCap,
+    freezeBlocked,
+    freezeMessage: freezeBlocked
+      ? "هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14."
+      : undefined,
   };
 }
 
 // Check capacity for ALL branches on a date in a single sheet read
 export async function checkAllBranchCapacity(date: string, branches: string[]) {
-  const capacity = getBranchCapacity();
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
@@ -255,10 +277,22 @@ export async function checkAllBranchCapacity(date: string, branches: string[]) {
   }
 
   const result: Record<string, any> = {};
+  const freezeBlocked = isInBookingFreezeWindow(date);
   for (const b of branches) {
-    const cap = capacity[b] ?? DEFAULT_BRANCH_CAPACITY[b] ?? 10;
+    const cap = getBranchCapacityForDate(b, date);
     const booked = counts[b];
-    result[b] = { branch: b, date, booked, capacity: cap, available: cap - booked, full: booked >= cap };
+    result[b] = {
+      branch: b,
+      date,
+      booked,
+      capacity: cap,
+      available: cap - booked,
+      full: freezeBlocked || booked >= cap,
+      freezeBlocked,
+      freezeMessage: freezeBlocked
+        ? "هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14."
+        : undefined,
+    };
   }
   return result;
 }
@@ -360,8 +394,7 @@ export async function addBooking(data: {
   });
   const rows = fresh.data.values || [];
 
-  const capacityMap = getBranchCapacity();
-  const branchCap = capacityMap[data.branch] ?? DEFAULT_BRANCH_CAPACITY[data.branch] ?? 10;
+  const branchCap = getBranchCapacityForDate(data.branch, data.appointmentDate);
 
   const totalForSlot = countBranchDateNonCancelled(rows, data.branch, data.appointmentDate);
 
@@ -418,8 +451,6 @@ export async function findAvailableDates(
   fromDate: string,
   count: number = 5
 ): Promise<Array<{ date: string; available: number }>> {
-  const capacity = getBranchCapacity();
-  const branchCap = capacity[branch] ?? DEFAULT_BRANCH_CAPACITY[branch] ?? 10;
   const results: Array<{ date: string; available: number }> = [];
 
   const checkDate = new Date(fromDate);
@@ -430,10 +461,10 @@ export async function findAvailableDates(
     if (checkDate.getDay() === 5) continue;
 
     const dateStr = formatDate(checkDate);
-    const booked = await getBookingCount(branch, dateStr);
+    const cap = await checkCapacity(branch, dateStr);
 
-    if (booked < branchCap) {
-      results.push({ date: dateStr, available: branchCap - booked });
+    if (!cap.full) {
+      results.push({ date: dateStr, available: cap.available });
     }
   }
 
