@@ -2,22 +2,39 @@
 
 import { signIn } from "next-auth/react";
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Suspense } from "react";
-const SALES_REPS = [
-  "Ahmed", "Amera", "Dr.Tarek", "Dr.Ahmed", "Fatema",
-  "Hamadto", "Hanady", "Lama", "Malik", "Mo.Saloumi",
-  "Rahma", "Shimaa", "Yara", "Engy", "Ibrahim",
-];
+import { useEffect } from "react";
 
 function LoginContent() {
-  const params = useSearchParams();
-  const error = params?.get("error");
+  const [urlError, setUrlError] = useState("");
 
   const [name, setName]           = useState("");
   const [pin, setPin]             = useState("");
+  const [salesReps, setSalesReps] = useState<string[]>([]);
   const [loading, setLoading]     = useState(false);
   const [loginError, setLoginError] = useState("");
+
+  useEffect(() => {
+    const loadUsers = async () => {
+      try {
+        const res = await fetch("/api/auth/authorized-users", { cache: "no-store" });
+        if (!res.ok) return;
+
+        const data: { users?: string[] } = await res.json();
+        if (Array.isArray(data.users)) {
+          setSalesReps(data.users);
+        }
+      } catch {
+        // Keep list empty when request fails.
+      }
+    };
+
+    void loadUsers();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setUrlError(params.get("error") || "");
+  }, []);
 
   const handleLogin = async () => {
     if (!name || !pin) { setLoginError("اختار اسمك وادخل الـ PIN"); return; }
@@ -179,7 +196,7 @@ function LoginContent() {
           <p className="login-tagline">نظام حجز المواعيد الداخلي</p>
           <div className="login-divider" />
 
-          {(error || loginError) && (
+          {(urlError || loginError) && (
             <div className="login-error">
               {loginError || "حصل خطأ — حاول تاني"}
             </div>
@@ -194,7 +211,7 @@ function LoginContent() {
               onChange={e => setName(e.target.value)}
             >
               <option value="">— اختار اسمك —</option>
-              {SALES_REPS.map(r => <option key={r} value={r}>{r}</option>)}
+              {salesReps.map(r => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
 
@@ -238,9 +255,5 @@ function LoginContent() {
 }
 
 export default function LoginPage() {
-  return (
-    <Suspense fallback={<div style={{ minHeight:"100vh" }} />}>
-      <LoginContent />
-    </Suspense>
-  );
+  return <LoginContent />;
 }

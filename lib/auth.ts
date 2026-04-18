@@ -1,15 +1,6 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-
-// Users stored as JSON in env var
-// Format: [{"name":"Ahmed","pin":"1234"},{"name":"Lama","pin":"5678"},...]
-function getUsers(): Array<{ name: string; pin: string }> {
-  try {
-    return JSON.parse(process.env.AUTHORIZED_USERS || "[]");
-  } catch {
-    return [];
-  }
-}
+import { getAuthorizedUsers } from "@/lib/authorizedUsers";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -22,7 +13,7 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.name || !credentials?.pin) return null;
 
-        const users = getUsers();
+        const users = getAuthorizedUsers();
         const user = users.find(
           (u) => u.name === credentials.name && u.pin === credentials.pin
         );
