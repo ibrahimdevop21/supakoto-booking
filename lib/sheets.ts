@@ -11,9 +11,9 @@ const DEFAULT_BRANCH_CAPACITY: Record<string, number> = {
 const FREEZE_START_DATE = "2026-04-09";
 const FREEZE_END_DATE = "2026-04-14"; // inclusive
 const POST_FREEZE_BRANCH_CAPACITY: Record<string, number> = {
-  التجمع: 8,
+  التجمع: 12,
   زايد: 6,
-  المعادي: 3,
+  المعادي: 5,
 };
 
 function getAuth() {
