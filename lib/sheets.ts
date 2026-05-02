@@ -11,10 +11,38 @@ const DEFAULT_BRANCH_CAPACITY: Record<string, number> = {
 const FREEZE_START_DATE = '2026-04-09';
 const FREEZE_END_DATE = '2026-04-14'; // inclusive
 const POST_FREEZE_BRANCH_CAPACITY: Record<string, number> = {
-  التجمع: 12,
+  التجمع: 8,
   زايد: 6,
   المعادي: 5,
 };
+
+const BRANCH_BOOKING_FREEZE_WINDOWS: Record<string, { start: string; end: string }[]> = {
+  التجمع: [{ start: '2026-05-03', end: '2026-05-05' }],
+  المعادي: [{ start: '2026-05-03', end: '2026-05-05' }],
+};
+
+function isDateInWindow(date: string, window: { start: string; end: string }) {
+  return date >= window.start && date <= window.end;
+}
+
+function isInBookingFreezeWindow(branch: string, date: string): boolean {
+  if (date >= FREEZE_START_DATE && date <= FREEZE_END_DATE) {
+    return true;
+  }
+  const windows = BRANCH_BOOKING_FREEZE_WINDOWS[branch];
+  return windows ? windows.some((window) => isDateInWindow(date, window)) : false;
+}
+
+function getFreezeMessage(branch: string, date: string): string | undefined {
+  if (date >= FREEZE_START_DATE && date <= FREEZE_END_DATE) {
+    return 'هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14.';
+  }
+  const windows = BRANCH_BOOKING_FREEZE_WINDOWS[branch];
+  const window = windows?.find((window) => isDateInWindow(date, window));
+  return window
+    ? `هذا الفرع لا يستقبل حجوزات جديدة من ${window.start} إلى ${window.end}.`
+    : undefined;
+}
 
 function getAuth() {
   let privateKey = (
@@ -88,10 +116,6 @@ function normalizeMobileForDuplicateKey(mobile: string): string {
 
 function isCancelledStatus(status: string): boolean {
   return (status || '').toUpperCase().includes('CANCEL');
-}
-
-function isInBookingFreezeWindow(date: string): boolean {
-  return date >= FREEZE_START_DATE && date <= FREEZE_END_DATE;
 }
 
 function getBranchCapacityForDate(branch: string, date: string): number {
@@ -267,7 +291,7 @@ export async function getBookingCount(
 export async function checkCapacity(branch: string, date: string) {
   const branchCap = getBranchCapacityForDate(branch, date);
   const booked = await getBookingCount(branch, date);
-  const freezeBlocked = isInBookingFreezeWindow(date);
+  const freezeBlocked = isInBookingFreezeWindow(branch, date);
 
   return {
     branch,
@@ -277,9 +301,7 @@ export async function checkCapacity(branch: string, date: string) {
     available: branchCap - booked,
     full: freezeBlocked || booked >= branchCap,
     freezeBlocked,
-    freezeMessage: freezeBlocked
-      ? 'هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14.'
-      : undefined,
+    freezeMessage: freezeBlocked ? getFreezeMessage(branch, date) : undefined,
   };
 }
 
@@ -310,10 +332,10 @@ export async function checkAllBranchCapacity(date: string, branches: string[]) {
   }
 
   const result: Record<string, any> = {};
-  const freezeBlocked = isInBookingFreezeWindow(date);
   for (const b of branches) {
     const cap = getBranchCapacityForDate(b, date);
     const booked = counts[b];
+    const freezeBlocked = isInBookingFreezeWindow(b, date);
     result[b] = {
       branch: b,
       date,
@@ -322,9 +344,7 @@ export async function checkAllBranchCapacity(date: string, branches: string[]) {
       available: cap - booked,
       full: freezeBlocked || booked >= cap,
       freezeBlocked,
-      freezeMessage: freezeBlocked
-        ? 'هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14.'
-        : undefined,
+      freezeMessage: freezeBlocked ? getFreezeMessage(b, date) : undefined,
     };
   }
   return result;
