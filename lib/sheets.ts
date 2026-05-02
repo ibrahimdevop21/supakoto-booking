@@ -1,15 +1,15 @@
-import { google } from "googleapis";
+import { google } from 'googleapis';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!;
-const BOOKINGS_SHEET = "Bookings";
-const DUPLICATES_SHEET = "DuplicateAttempts";
+const BOOKINGS_SHEET = 'Bookings';
+const DUPLICATES_SHEET = 'DuplicateAttempts';
 const DEFAULT_BRANCH_CAPACITY: Record<string, number> = {
   التجمع: 10,
   زايد: 8,
   المعادي: 6,
 };
-const FREEZE_START_DATE = "2026-04-09";
-const FREEZE_END_DATE = "2026-04-14"; // inclusive
+const FREEZE_START_DATE = '2026-04-09';
+const FREEZE_END_DATE = '2026-04-14'; // inclusive
 const POST_FREEZE_BRANCH_CAPACITY: Record<string, number> = {
   التجمع: 12,
   زايد: 6,
@@ -17,37 +17,44 @@ const POST_FREEZE_BRANCH_CAPACITY: Record<string, number> = {
 };
 
 function getAuth() {
-  let privateKey = (process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || "").trim();
+  let privateKey = (
+    process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY || ''
+  ).trim();
   // Strip surrounding quotes if accidentally pasted with them (common Vercel mistake)
-  if ((privateKey.startsWith('"') && privateKey.endsWith('"')) ||
-      (privateKey.startsWith("'") && privateKey.endsWith("'"))) {
+  if (
+    (privateKey.startsWith('"') && privateKey.endsWith('"')) ||
+    (privateKey.startsWith("'") && privateKey.endsWith("'"))
+  ) {
     privateKey = privateKey.slice(1, -1);
   }
   // Replace literal \n sequences with actual newlines
-  privateKey = privateKey.replace(/\\n/g, "\n");
+  privateKey = privateKey.replace(/\\n/g, '\n');
   // Ensure -----END marker is on its own line (handles copy-paste without trailing newline)
-  privateKey = privateKey.replace(/([^\n])(-----END )/, "$1\n$2");
+  privateKey = privateKey.replace(/([^\n])(-----END )/, '$1\n$2');
 
   return new google.auth.GoogleAuth({
     credentials: {
       client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL?.trim(),
       private_key: privateKey,
     },
-    scopes: ["https://www.googleapis.com/auth/spreadsheets"],
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
 }
 
 function getSheets() {
-  return google.sheets({ version: "v4", auth: getAuth() });
+  return google.sheets({ version: 'v4', auth: getAuth() });
 }
 
 export function getBranchCapacity(): Record<string, number> {
   try {
-    const raw = JSON.parse(process.env.BRANCH_CAPACITY || "{}") as Record<string, unknown>;
+    const raw = JSON.parse(process.env.BRANCH_CAPACITY || '{}') as Record<
+      string,
+      unknown
+    >;
     const sanitized: Record<string, number> = { ...DEFAULT_BRANCH_CAPACITY };
 
     for (const [branch, value] of Object.entries(raw)) {
-      const n = typeof value === "number" ? value : Number(value);
+      const n = typeof value === 'number' ? value : Number(value);
       if (Number.isFinite(n) && n > 0) {
         sanitized[branch] = n;
       }
@@ -62,25 +69,25 @@ export function getBranchCapacity(): Record<string, number> {
 // Format date as YYYY-MM-DD
 function formatDate(date: Date): string {
   const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
   return `${y}-${m}-${d}`;
 }
 
 /** Normalize for duplicate detection only; storage in the sheet stays as entered. */
 function normalizeMobileForDuplicateKey(mobile: string): string {
-  let d = mobile.replace(/\D/g, "");
-  if (d.startsWith("20") && d.length === 12) {
+  let d = mobile.replace(/\D/g, '');
+  if (d.startsWith('20') && d.length === 12) {
     d = d.slice(2);
   }
-  if (d.length === 11 && d.startsWith("0")) {
+  if (d.length === 11 && d.startsWith('0')) {
     d = d.slice(1);
   }
   return d;
 }
 
 function isCancelledStatus(status: string): boolean {
-  return (status || "").toUpperCase().includes("CANCEL");
+  return (status || '').toUpperCase().includes('CANCEL');
 }
 
 function isInBookingFreezeWindow(date: string): boolean {
@@ -89,7 +96,10 @@ function isInBookingFreezeWindow(date: string): boolean {
 
 function getBranchCapacityForDate(branch: string, date: string): number {
   const capacity = getBranchCapacity();
-  if (date > FREEZE_END_DATE && POST_FREEZE_BRANCH_CAPACITY[branch] !== undefined) {
+  if (
+    date > FREEZE_END_DATE &&
+    POST_FREEZE_BRANCH_CAPACITY[branch] !== undefined
+  ) {
     return POST_FREEZE_BRANCH_CAPACITY[branch];
   }
   return capacity[branch] ?? DEFAULT_BRANCH_CAPACITY[branch] ?? 10;
@@ -98,8 +108,13 @@ function getBranchCapacityForDate(branch: string, date: string): number {
 // Check if a phone number already has any active future booking
 export async function checkDuplicatePhone(
   mobile: string,
-  _date: string
-): Promise<{ isDuplicate: boolean; existingRep?: string; existingBranch?: string; existingDate?: string }> {
+  _date: string,
+): Promise<{
+  isDuplicate: boolean;
+  existingRep?: string;
+  existingBranch?: string;
+  existingDate?: string;
+}> {
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
@@ -111,20 +126,22 @@ export async function checkDuplicatePhone(
   const today = formatDate(new Date());
 
   for (const row of rows) {
-    const rowMobile = normalizeMobileForDuplicateKey((row[3] || "").trim());
-    const rowDate = row[8] || "";
-    const rowStatus = row[10] || "";
+    const rowMobile = normalizeMobileForDuplicateKey((row[3] || '').trim());
+    const rowDate = row[8] || '';
+    const rowStatus = row[10] || '';
 
     if (isCancelledStatus(rowStatus)) continue;
 
     let normalizedRowDate = rowDate;
-    try { normalizedRowDate = formatDate(new Date(rowDate)); } catch {}
+    try {
+      normalizedRowDate = formatDate(new Date(rowDate));
+    } catch {}
 
     if (rowMobile === normalizedMobile && normalizedRowDate >= today) {
       return {
         isDuplicate: true,
-        existingRep: row[1] || "مندوب آخر",
-        existingBranch: row[4] || "",
+        existingRep: row[1] || 'مندوب آخر',
+        existingBranch: row[4] || '',
         existingDate: normalizedRowDate,
       };
     }
@@ -149,17 +166,19 @@ export async function logDuplicateAttempt(data: {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `${DUPLICATES_SHEET}!A:G`,
-      valueInputOption: "USER_ENTERED",
+      valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values: [[
-          timestamp,
-          data.agentName,
-          data.mobile,
-          data.attemptedDate,
-          data.existingRep,
-          data.existingBranch,
-          data.existingDate,
-        ]],
+        values: [
+          [
+            timestamp,
+            data.agentName,
+            data.mobile,
+            data.attemptedDate,
+            data.existingRep,
+            data.existingBranch,
+            data.existingDate,
+          ],
+        ],
       },
     });
   } catch {
@@ -173,25 +192,37 @@ export async function logDuplicateAttempt(data: {
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `${DUPLICATES_SHEET}!A1:G1`,
-      valueInputOption: "RAW",
+      valueInputOption: 'RAW',
       requestBody: {
-        values: [["Timestamp", "Agent", "Mobile (Attempted)", "Attempted Date", "Existing Rep", "Existing Branch", "Existing Booking Date"]],
+        values: [
+          [
+            'Timestamp',
+            'Agent',
+            'Mobile (Attempted)',
+            'Attempted Date',
+            'Existing Rep',
+            'Existing Branch',
+            'Existing Booking Date',
+          ],
+        ],
       },
     });
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: `${DUPLICATES_SHEET}!A:G`,
-      valueInputOption: "USER_ENTERED",
+      valueInputOption: 'USER_ENTERED',
       requestBody: {
-        values: [[
-          timestamp,
-          data.agentName,
-          data.mobile,
-          data.attemptedDate,
-          data.existingRep,
-          data.existingBranch,
-          data.existingDate,
-        ]],
+        values: [
+          [
+            timestamp,
+            data.agentName,
+            data.mobile,
+            data.attemptedDate,
+            data.existingRep,
+            data.existingBranch,
+            data.existingDate,
+          ],
+        ],
       },
     });
   }
@@ -200,7 +231,7 @@ export async function logDuplicateAttempt(data: {
 // Get count of bookings for a branch on a specific date
 export async function getBookingCount(
   branch: string,
-  date: string
+  date: string,
 ): Promise<number> {
   const sheets = getSheets();
   const res = await sheets.spreadsheets.values.get({
@@ -212,9 +243,9 @@ export async function getBookingCount(
   let count = 0;
 
   for (const row of rows) {
-    const rowBranch = row[4] || "";
-    const rowDate = row[8] || "";
-    const rowStatus = row[10] || "";
+    const rowBranch = row[4] || '';
+    const rowDate = row[8] || '';
+    const rowStatus = row[10] || '';
 
     if (isCancelledStatus(rowStatus)) continue;
 
@@ -247,7 +278,7 @@ export async function checkCapacity(branch: string, date: string) {
     full: freezeBlocked || booked >= branchCap,
     freezeBlocked,
     freezeMessage: freezeBlocked
-      ? "هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14."
+      ? 'هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14.'
       : undefined,
   };
 }
@@ -265,14 +296,16 @@ export async function checkAllBranchCapacity(date: string, branches: string[]) {
   for (const b of branches) counts[b] = 0;
 
   for (const row of rows) {
-    const rowBranch = row[4] || "";
-    const rowDate = row[8] || "";
-    const rowStatus = row[10] || "";
+    const rowBranch = row[4] || '';
+    const rowDate = row[8] || '';
+    const rowStatus = row[10] || '';
     if (isCancelledStatus(rowStatus)) continue;
     if (!(rowBranch in counts)) continue;
 
     let normalizedRowDate = rowDate;
-    try { normalizedRowDate = formatDate(new Date(rowDate)); } catch {}
+    try {
+      normalizedRowDate = formatDate(new Date(rowDate));
+    } catch {}
     if (normalizedRowDate === date) counts[rowBranch]++;
   }
 
@@ -290,22 +323,28 @@ export async function checkAllBranchCapacity(date: string, branches: string[]) {
       full: freezeBlocked || booked >= cap,
       freezeBlocked,
       freezeMessage: freezeBlocked
-        ? "هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14."
+        ? 'هذا الفرع لا يستقبل حجوزات جديدة حاليا بسبب الضغط حتى 2026-04-14.'
         : undefined,
     };
   }
   return result;
 }
 
-function parseAppendRowNumber(updatedRange: string | null | undefined): number | null {
+function parseAppendRowNumber(
+  updatedRange: string | null | undefined,
+): number | null {
   if (!updatedRange) return null;
   const m = updatedRange.match(/![A-Za-z]+(\d+)/);
   return m ? parseInt(m[1], 10) : null;
 }
 
-async function getBookingsSheetId(sheets: ReturnType<typeof getSheets>): Promise<number> {
+async function getBookingsSheetId(
+  sheets: ReturnType<typeof getSheets>,
+): Promise<number> {
   const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
-  const sheet = meta.data.sheets?.find((s) => s.properties?.title === BOOKINGS_SHEET);
+  const sheet = meta.data.sheets?.find(
+    (s) => s.properties?.title === BOOKINGS_SHEET,
+  );
   const id = sheet?.properties?.sheetId;
   if (id === undefined || id === null) {
     throw new Error(`Sheet "${BOOKINGS_SHEET}" not found`);
@@ -317,13 +356,13 @@ async function getBookingsSheetId(sheets: ReturnType<typeof getSheets>): Promise
 function countBranchDateNonCancelled(
   rows: string[][],
   branch: string,
-  date: string
+  date: string,
 ): number {
   let count = 0;
   for (const row of rows) {
-    const rowBranch = row[4] || "";
-    const rowDate = row[8] || "";
-    const rowStatus = row[10] || "";
+    const rowBranch = row[4] || '';
+    const rowDate = row[8] || '';
+    const rowStatus = row[10] || '';
     if (isCancelledStatus(rowStatus)) continue;
 
     let normalizedRowDate = rowDate;
@@ -353,17 +392,17 @@ export async function addBooking(data: {
   // UI-facing early return (kept for fast alternatives path)
   const cap = await checkCapacity(data.branch, data.appointmentDate);
   if (cap.full) {
-    return { success: false, message: "Branch is full", capacity: cap };
+    return { success: false, message: 'Branch is full', capacity: cap };
   }
 
   const sheets = getSheets();
   const timestamp = new Date().toISOString();
-  const pendingStatus = "⏳ PENDING";
+  const pendingStatus = '⏳ PENDING';
 
   const appendRes = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: `${BOOKINGS_SHEET}!A:K`,
-    valueInputOption: "USER_ENTERED",
+    valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [
         [
@@ -383,9 +422,13 @@ export async function addBooking(data: {
     },
   });
 
-  const rowNumber = parseAppendRowNumber(appendRes.data.updates?.updatedRange ?? null);
+  const rowNumber = parseAppendRowNumber(
+    appendRes.data.updates?.updatedRange ?? null,
+  );
   if (rowNumber === null) {
-    throw new Error("Append did not return updatedRange; cannot finalize booking");
+    throw new Error(
+      'Append did not return updatedRange; cannot finalize booking',
+    );
   }
 
   const fresh = await sheets.spreadsheets.values.get({
@@ -396,14 +439,18 @@ export async function addBooking(data: {
 
   const branchCap = getBranchCapacityForDate(data.branch, data.appointmentDate);
 
-  const totalForSlot = countBranchDateNonCancelled(rows, data.branch, data.appointmentDate);
+  const totalForSlot = countBranchDateNonCancelled(
+    rows,
+    data.branch,
+    data.appointmentDate,
+  );
 
   if (totalForSlot <= branchCap) {
     const status = `✅ Confirmed (${totalForSlot}/${branchCap})`;
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
       range: `${BOOKINGS_SHEET}!K${rowNumber}`,
-      valueInputOption: "USER_ENTERED",
+      valueInputOption: 'USER_ENTERED',
       requestBody: { values: [[status]] },
     });
 
@@ -431,7 +478,7 @@ export async function addBooking(data: {
           deleteDimension: {
             range: {
               sheetId,
-              dimension: "ROWS",
+              dimension: 'ROWS',
               startIndex,
               endIndex: startIndex + 1,
             },
@@ -441,15 +488,22 @@ export async function addBooking(data: {
     },
   });
 
-  const capAfterRollback = await checkCapacity(data.branch, data.appointmentDate);
-  return { success: false, message: "Branch is full", capacity: capAfterRollback };
+  const capAfterRollback = await checkCapacity(
+    data.branch,
+    data.appointmentDate,
+  );
+  return {
+    success: false,
+    message: 'Branch is full',
+    capacity: capAfterRollback,
+  };
 }
 
 // Find next available dates for a branch
 export async function findAvailableDates(
   branch: string,
   fromDate: string,
-  count: number = 5
+  count: number = 5,
 ): Promise<Array<{ date: string; available: number }>> {
   const results: Array<{ date: string; available: number }> = [];
 
@@ -485,21 +539,21 @@ export async function initSheet() {
       await sheets.spreadsheets.values.update({
         spreadsheetId: SPREADSHEET_ID,
         range: `${BOOKINGS_SHEET}!A1:K1`,
-        valueInputOption: "RAW",
+        valueInputOption: 'RAW',
         requestBody: {
           values: [
             [
-              "Timestamp",
-              "Sales Rep",
-              "العميل (Customer)",
-              "Mobile",
-              "الفرع (Branch)",
-              "نوع و موديل المركبة (Car)",
-              "الخدمة (Service)",
-              "المبلغ (Amount)",
-              "الموعد (Date)",
-              "ملاحظات (Notes)",
-              "Status",
+              'Timestamp',
+              'Sales Rep',
+              'العميل (Customer)',
+              'Mobile',
+              'الفرع (Branch)',
+              'نوع و موديل المركبة (Car)',
+              'الخدمة (Service)',
+              'المبلغ (Amount)',
+              'الموعد (Date)',
+              'ملاحظات (Notes)',
+              'Status',
             ],
           ],
         },
@@ -507,6 +561,6 @@ export async function initSheet() {
     }
   } catch (error) {
     // Sheet might not exist yet — that's fine, append will create it
-    console.error("initSheet error:", error);
+    console.error('initSheet error:', error);
   }
 }

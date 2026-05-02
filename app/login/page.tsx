@@ -1,22 +1,24 @@
-"use client";
+'use client';
 
-import { signIn } from "next-auth/react";
-import { useState } from "react";
-import { useEffect } from "react";
+import { signIn } from 'next-auth/react';
+import { useState } from 'react';
+import { useEffect } from 'react';
 
 function LoginContent() {
-  const [urlError, setUrlError] = useState("");
+  const [urlError, setUrlError] = useState('');
 
-  const [name, setName]           = useState("");
-  const [pin, setPin]             = useState("");
+  const [name, setName] = useState('');
+  const [pin, setPin] = useState('');
   const [salesReps, setSalesReps] = useState<string[]>([]);
-  const [loading, setLoading]     = useState(false);
-  const [loginError, setLoginError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loginError, setLoginError] = useState('');
 
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        const res = await fetch("/api/auth/authorized-users", { cache: "no-store" });
+        const res = await fetch('/api/auth/authorized-users', {
+          cache: 'no-store',
+        });
         if (!res.ok) return;
 
         const data: { users?: string[] } = await res.json();
@@ -33,19 +35,22 @@ function LoginContent() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setUrlError(params.get("error") || "");
+    setUrlError(params.get('error') || '');
   }, []);
 
   const handleLogin = async () => {
-    if (!name || !pin) { setLoginError("اختار اسمك وادخل الـ PIN"); return; }
+    if (!name || !pin) {
+      setLoginError('اختار اسمك وادخل الـ PIN');
+      return;
+    }
     setLoading(true);
-    setLoginError("");
-    const result = await signIn("credentials", { name, pin, redirect: false });
+    setLoginError('');
+    const result = await signIn('credentials', { name, pin, redirect: false });
     if (result?.error) {
-      setLoginError("PIN غلط — حاول تاني");
+      setLoginError('PIN غلط — حاول تاني');
       setLoading(false);
     } else {
-      window.location.href = "/";
+      window.location.href = '/';
     }
   };
 
@@ -184,70 +189,95 @@ function LoginContent() {
         .field-wrap { margin-bottom: 18px; }
       `}</style>
 
-      <div className="login-page">
-        <div className="login-card">
-
+      <div className='login-page'>
+        <div className='login-card'>
           {/* Logo */}
-          <div className="login-logo-wrap">
+          <div className='login-logo-wrap'>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="SupaKoto" style={{ width: 186, height: 80, objectFit: "contain" }} />
+            <img
+              src='/logo.svg'
+              alt='SupaKoto'
+              style={{ width: 186, height: 80, objectFit: 'contain' }}
+            />
           </div>
 
-          <p className="login-tagline">نظام حجز المواعيد الداخلي</p>
-          <div className="login-divider" />
+          <p className='login-tagline'>نظام حجز المواعيد الداخلي</p>
+          <div className='login-divider' />
 
           {(urlError || loginError) && (
-            <div className="login-error">
-              {loginError || "حصل خطأ — حاول تاني"}
+            <div className='login-error'>
+              {loginError || 'حصل خطأ — حاول تاني'}
             </div>
           )}
 
           {/* Name */}
-          <div className="field-wrap">
-            <label className="login-label">اسمك</label>
+          <div className='field-wrap'>
+            <label className='login-label'>اسمك</label>
             <select
-              className={`login-select${name ? " filled" : ""}`}
+              className={`login-select${name ? ' filled' : ''}`}
               value={name}
-              onChange={e => setName(e.target.value)}
+              onChange={(e) => setName(e.target.value)}
             >
-              <option value="">— اختار اسمك —</option>
-              {salesReps.map(r => <option key={r} value={r}>{r}</option>)}
+              <option value=''>— اختار اسمك —</option>
+              {salesReps.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
             </select>
           </div>
 
           {/* PIN */}
-          <div className="field-wrap" style={{ marginBottom: 26 }}>
-            <label className="login-label">PIN</label>
+          <div className='field-wrap' style={{ marginBottom: 26 }}>
+            <label className='login-label'>PIN</label>
             <input
-              type="password"
-              inputMode="numeric"
+              type='password'
+              inputMode='numeric'
               maxLength={6}
-              placeholder="••••"
-              className={`login-input login-pin${pin ? " filled" : ""}`}
+              placeholder='••••'
+              className={`login-input login-pin${pin ? ' filled' : ''}`}
               value={pin}
-              onChange={e => setPin(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={e => e.key === "Enter" && handleLogin()}
+              onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+              onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
             />
           </div>
 
           {/* Button */}
           <button
-            className="login-btn"
+            className='login-btn'
             onClick={handleLogin}
             disabled={loading}
           >
-            {loading
-              ? <span style={{ display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-                  <span style={{ width:14, height:14, border:"2px solid rgba(255,255,255,0.3)",
-                    borderTopColor:"#fff", borderRadius:"50%", display:"inline-block",
-                    animation:"spin 0.75s linear infinite" }} />
-                  جاري الدخول...
-                </span>
-              : "دخول ←"
-            }
+            {loading ? (
+              <span
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    border: '2px solid rgba(255,255,255,0.3)',
+                    borderTopColor: '#fff',
+                    borderRadius: '50%',
+                    display: 'inline-block',
+                    animation: 'spin 0.75s linear infinite',
+                  }}
+                />
+                جاري الدخول...
+              </span>
+            ) : (
+              'دخول ←'
+            )}
           </button>
 
-          <p className="login-footer">SupaKoto Internal Tool · Authorized Use Only</p>
+          <p className='login-footer'>
+            SupaKoto Internal Tool · Authorized Use Only
+          </p>
         </div>
       </div>
     </>
