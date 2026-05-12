@@ -6,7 +6,7 @@ const DUPLICATES_SHEET = 'DuplicateAttempts';
 const DEFAULT_BRANCH_CAPACITY: Record<string, number> = {
   التجمع: 10,
   زايد: 8,
-  المعادي: 6,
+  المعادي: 5,
 };
 const FREEZE_START_DATE = '2026-05-26';
 const FREEZE_END_DATE = '2026-05-31'; // inclusive
@@ -22,7 +22,10 @@ const BRANCH_BOOKING_FREEZE_WINDOWS: Record<
 > = {
   التجمع: [{ start: '2026-05-03', end: '2026-05-05' }],
   زايد: [{ start: '2026-05-07', end: '2026-05-08' }],
-  المعادي: [{ start: '2026-05-03', end: '2026-05-05' }],
+  المعادي: [
+    { start: '2026-05-03', end: '2026-05-05' },
+    { start: '2026-05-13', end: '2026-05-16' },
+  ],
 };
 
 function isDateInWindow(date: string, window: { start: string; end: string }) {
