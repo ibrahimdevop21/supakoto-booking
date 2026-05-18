@@ -8,7 +8,7 @@ const DEFAULT_BRANCH_CAPACITY: Record<string, number> = {
   زايد: 8,
   المعادي: 5,
 };
-const FREEZE_START_DATE = '2026-05-26';
+const FREEZE_START_DATE = '2026-05-24';
 const FREEZE_END_DATE = '2026-05-31'; // inclusive
 const POST_FREEZE_BRANCH_CAPACITY: Record<string, number> = {
   التجمع: 8,
@@ -44,7 +44,7 @@ function isInBookingFreezeWindow(branch: string, date: string): boolean {
 
 function getFreezeMessage(branch: string, date: string): string | undefined {
   if (date >= FREEZE_START_DATE && date <= FREEZE_END_DATE) {
-    return 'هذا الفرع لا يستقبل حجوزات جديدة خلال عيد الأضحى المبارك من 2026-05-26 إلى 2026-05-31.';
+    return 'هذا الفرع لا يستقبل حجوزات جديدة خلال عيد الأضحى المبارك من 2026-05-24 إلى 2026-05-31.';
   }
   const windows = BRANCH_BOOKING_FREEZE_WINDOWS[branch];
   const window = windows?.find((window) => isDateInWindow(date, window));
